@@ -310,11 +310,7 @@ def get_logger(level):
     return _logger
 
 if __name__ == '__main__':
-    user_data = {
-        'username': 'mow06.03096.rf',
-        'password': '2017Wse!'
-    }
-
+    from config import user_data
     logger = get_logger('INFO')
     wsis = Wsis(logger)
     wsis.login(user_data)
