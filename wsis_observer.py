@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup as BeS
 import re
 import json
 import logging
-from collections import OrderedDict, defaultdict, namedtuple
+from collections import namedtuple
 
 
 # TODO: достать печенье из супа
@@ -12,7 +12,6 @@ from collections import OrderedDict, defaultdict, namedtuple
 # TODO: Логгирование для дебаг-режима - в стдаут
 # TODO: искать айди сессии не в хтмл, а в куках сразу
 # TODO: кэшировать кое-что
-
 # TODO: рефактор под многопользовательский режим. лоадить куки под конкретного юзера. все реквесты под конкретных.
 
 
@@ -190,7 +189,7 @@ class Wsis:
         """
         self.logging.debug('Совершаем POST-запрос на логаут')
         cookie = CookieStorage.cookie_load()
-        logout_post_request = requests.post(logout_url, cookies=cookie)
+        logout_post_request = requests.post(logout_url, proxies=self.proxies, cookies=cookie)
         return logout_post_request
 
     def _logout_cycle(self):
@@ -336,9 +335,10 @@ def get_logger(level):
     return _logger
 
 if __name__ == '__main__':
-    from config import user_data
+    from config import user_data, proxies
     logger = get_logger('INFO')
     wsis = Wsis(logger)
+    wsis.proxies = proxies
     wsis.login(user_data)
     wsis.get_schedule()
     wsis.logout()
