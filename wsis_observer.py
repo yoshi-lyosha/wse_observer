@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup as BeS
 import re
 import json
 import logging
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict, defaultdict, namedtuple
 
 
 # TODO: достать печенье из супа
@@ -259,23 +259,48 @@ class Wsis:
         :return:
         """
         self.logging.debug('Парсим страницу с расписанием')
-        shedule_list = list()
+
         schedule_soup = BeS(schedule_html, 'html.parser')
         schedule_table = schedule_soup.body.find_all('table')[2]
         tr_list = schedule_table.find_all('tr')
+        schedule = []
+
         for tr in tr_list[1:-1]:
+            schedule_field = namedtuple('Расписание', 'lesson date time unit description')
 
             td_list = tr.find_all('td')
-            type_pattern = r'(\w+)'
+
+            lesson_pattern = r'(\w+)'
             date_pattern = r'(\d{2}/\d{2}/\d{4})'
             time_pattern = r'(\d{2}:\d{2}\s* - \s*\d{2}:\d{2})'
             unit_pattern = r'([\w\+]+)\s?,?'
             description_pattern = r'(\w+)+'
-            print(re.findall(type_pattern, td_list[1].text.replace('\n', '')))
-            print(re.findall(date_pattern, td_list[2].text.replace('\n', '')))
-            print(re.findall(time_pattern, td_list[2].text.replace('\n', '')))
-            print(re.findall(unit_pattern, td_list[3].text.replace('\n', '')))
-            print(re.findall(description_pattern, td_list[4].text.replace('\n', '')))
+
+            lesson_type = re.findall(lesson_pattern, td_list[1].text.replace('\n', ''))
+            date = re.findall(date_pattern, td_list[2].text.replace('\n', ''))
+            time = re.findall(time_pattern, td_list[2].text.replace('\n', ''))
+            unit = re.findall(unit_pattern, td_list[3].text.replace('\n', ''))
+            description = re.findall(description_pattern, td_list[4].text.replace('\n', ''))
+
+            schedule_field.lesson_type = ' '.join(word for word in lesson_type)
+            schedule_field.date = ' '.join(word for word in date)
+            schedule_field.time = ' '.join(word for word in time)
+            schedule_field.unit = ' '.join(word for word in unit)
+            schedule_field.description = ' '.join(word for word in description)
+
+            schedule.append(schedule_field)
+        return schedule
+
+    def _print_schedule(self, schedule_list):
+        self.logging.debug('Печатаем расписание')
+
+        for number, schedule_field in enumerate(schedule_list, 1):
+            print('********{}********'.format(number))
+            print('Тип...............{}'.format(schedule_field.lesson_type))
+            print('Дата..............{}'.format(schedule_field.date))
+            print('Время.............{}'.format(schedule_field.time))
+            print('Занятие, уровни...{}'.format(schedule_field.unit))
+            print('Описание занятия..{}'.format(schedule_field.description))
 
     def get_schedule(self):
         """
@@ -289,7 +314,8 @@ class Wsis:
 
         elif schedule_page_request.status_code == 200:
             schedule_html = schedule_page_request.text
-            self._get_schedule_from_html(schedule_html)
+            schedule = self._get_schedule_from_html(schedule_html)
+            self._print_schedule(schedule)
 
 
 def get_logger(level):
