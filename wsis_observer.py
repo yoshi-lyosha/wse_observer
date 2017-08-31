@@ -1,16 +1,15 @@
 import requests
 from bs4 import BeautifulSoup as BeS
 import re
+import os
 import json
 import logging
 from collections import namedtuple
 
 
-# TODO: достать печенье из супа
 # TODO: автоматически создавать конфиг и предлагать его заполнить
 # TODO: оптимизировать количество переходов на сайт. мне не нравится что это занимает так много времени
 # TODO: узнать сколько живёт сессия
-# TODO: создавать файл для кук, если его нету
 # TODO: Логгирование для дебаг-режима - в стдаут, продакшн - в файл
 # TODO: искать айди сессии не в хтмл, а в куках сразу
 # TODO: кэшировать что-нибудь по-возможности
@@ -26,6 +25,10 @@ class CookieStorage:
         :return:
         cookie - словарь с куками
         """
+        if not os.path.exists('cookie.json'):
+            logging.debug('Создаём файл для кук')
+            with open('cookie.json', 'w') as cookie_file:
+                json.dump({}, cookie_file)
         logging.debug('Подгружаем куки')
         with open('cookie.json') as cookie_file:
             cookie = json.load(cookie_file)
