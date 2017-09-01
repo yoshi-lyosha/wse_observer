@@ -74,13 +74,12 @@ class Wsis:
     def _get_login_data(self, user_login_data):
         self.logging.debug('Генерим данные для логина')
         login_data = dict(self.wsis_login_data)
-        for key, value in user_login_data.items():
-            login_data[key] = value
+        login_data.update(user_login_data)
         return login_data
 
-    def _get_form_action_field(self, index_html):
+    def _get_login_url(self, index_html):
         """
-        Получает агрумент action поля form из html
+        Получает урл для логина из action поля form из html
 
         :param index_html: хтмл для обработки
         :return: агрумент action поля form
@@ -88,20 +87,8 @@ class Wsis:
         self.logging.debug('Извлекаем поле form action из index.html')
         index_soup = BeS(index_html, 'html.parser')
         form_action_field = index_soup.form.get('action')
-        return form_action_field
-
-    def _get_cookie_from_form_action_field(self, form_action_field):
-        """
-        Получает JSESSIONID из form_action_field
-
-        :param form_action_field: агрумент action поля form
-        :return: словарь кук с JSESSIONID в нём
-        """
-        self.logging.debug('Получаем JSESSIONID для куки')
-        cookie = dict()
-        jsession_id_re = r'jsessionid=(.*)\?'
-        cookie['JSESSIONID'] = re.findall(jsession_id_re, form_action_field)[0]
-        return cookie
+        login_url = self.wsis_index_url + form_action_field
+        return login_url
 
     def _post_login_request(self, login_url, login_data):
         """
@@ -122,13 +109,12 @@ class Wsis:
         """
         for try_to_login in range(1, 4):
             self.logging.debug('Пытаемся залогиниться, попытка {} из 3'.format(try_to_login))
-            index_html = requests.get(self.wsis_index_url, proxies=self.proxies).text
-            form_action_field = self._get_form_action_field(index_html)
-            login_url = self.wsis_index_url + form_action_field
-            login_post_request = self._post_login_request(login_url, login_data)
+            index_page_request = requests.get(self.wsis_index_url, proxies=self.proxies)
+            index_html = index_page_request.text
+            login_post_request = self._post_login_request(self._get_login_url(index_html), login_data)
             if login_post_request.status_code == 200:
                 self.logging.debug('POST запрос для логина прошёл успешно')
-                cookie = self._get_cookie_from_form_action_field(form_action_field)
+                cookie = dict(index_page_request.cookies)
                 CookieStorage.cookie_save(cookie)
                 return True
             else:
@@ -271,7 +257,7 @@ class Wsis:
         schedule = []
 
         for tr in tr_list[1:-1]:
-            schedule_field = namedtuple('Расписание', 'lesson date time unit description')
+            schedule_field = dict()
 
             td_list = tr.find_all('td')
 
@@ -287,11 +273,11 @@ class Wsis:
             unit = re.findall(unit_pattern, td_list[3].text.replace('\n', ''))
             description = re.findall(description_pattern, td_list[4].text.replace('\n', ''))
 
-            schedule_field.lesson_type = ' '.join(word for word in lesson_type)
-            schedule_field.date = ' '.join(word for word in date)
-            schedule_field.time = ' '.join(word for word in time)
-            schedule_field.unit = ' '.join(word for word in unit)
-            schedule_field.description = ' '.join(word for word in description)
+            schedule_field['lesson_type'] = ' '.join(word for word in lesson_type)
+            schedule_field['date'] = ' '.join(word for word in date)
+            schedule_field['time'] = ' '.join(word for word in time)
+            schedule_field['unit'] = ' '.join(word for word in unit)
+            schedule_field['description'] = ' '.join(word for word in description)
 
             schedule.append(schedule_field)
         return schedule
@@ -301,11 +287,11 @@ class Wsis:
 
         for number, schedule_field in enumerate(schedule_list, 1):
             print('********{}********'.format(number))
-            print('Тип...............{}'.format(schedule_field.lesson_type))
-            print('Дата..............{}'.format(schedule_field.date))
-            print('Время.............{}'.format(schedule_field.time))
-            print('Занятие, уровни...{}'.format(schedule_field.unit))
-            print('Описание занятия..{}'.format(schedule_field.description))
+            print('Тип...............{}'.format(schedule_field['lesson_type']))
+            print('Дата..............{}'.format(schedule_field['date']))
+            print('Время.............{}'.format(schedule_field['time']))
+            print('Занятие, уровни...{}'.format(schedule_field['unit']))
+            print('Описание занятия..{}'.format(schedule_field['description']))
 
     def get_schedule(self):
         """
@@ -346,14 +332,15 @@ def _get_proxies_from_config():
         from config import proxies
         return proxies
     except ImportError:
-        return {}
+        proxies = {}
+        return proxies
 
 
 def _get_user_data_from_config():
     try:
         from config import user_data
         return user_data
-    except ImportError as e:
+    except Exception as e:
         print(e, 'from config')
         sys.exit(errno.ENOENT)
 
@@ -382,10 +369,10 @@ def get_data_from_config():
 
 
 if __name__ == '__main__':
-    proxies, user_data = get_data_from_config()
-    logger = get_logger('INFO')
+    user_proxies, user_data = get_data_from_config()
+    logger = get_logger('info')
     wsis = Wsis(logger)
-    wsis.proxies = proxies
+    wsis.proxies = user_proxies
     wsis.login(user_data)
     wsis.get_schedule()
     wsis.logout()
