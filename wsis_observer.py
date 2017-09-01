@@ -6,7 +6,6 @@ import sys
 import errno
 import json
 import logging
-from collections import namedtuple
 
 
 # TODO: оптимизировать количество переходов на сайт. мне не нравится что это занимает так много времени
@@ -341,7 +340,7 @@ def _get_user_data_from_config():
         from config import user_data
         return user_data
     except Exception as e:
-        print(e, 'from config')
+        print(e)
         sys.exit(errno.ENOENT)
 
 
