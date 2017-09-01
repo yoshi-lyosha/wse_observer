@@ -2,12 +2,13 @@ import requests
 from bs4 import BeautifulSoup as BeS
 import re
 import os
+import sys
+import errno
 import json
 import logging
 from collections import namedtuple
 
 
-# TODO: автоматически создавать конфиг и предлагать его заполнить
 # TODO: оптимизировать количество переходов на сайт. мне не нравится что это занимает так много времени
 # TODO: узнать сколько живёт сессия
 # TODO: Логгирование для дебаг-режима - в стдаут, продакшн - в файл
@@ -339,8 +340,49 @@ def get_logger(level):
     _logger.addHandler(ch)
     return _logger
 
+
+def _get_proxies_from_config():
+    try:
+        from config import proxies
+        return proxies
+    except ImportError:
+        return {}
+
+
+def _get_user_data_from_config():
+    try:
+        from config import user_data
+        return user_data
+    except ImportError as e:
+        print(e, 'from config')
+        sys.exit(errno.ENOENT)
+
+
+def _create_config_file():
+    http_proxy = input('Enter http proxy: ')
+    https_proxy = input('Enter https proxy: ')
+    _proxies = {'http': http_proxy, 'https': https_proxy}
+    username = input('Enter username: ')
+    password = input('Enter password: ')
+    _user_data = {'username': username, 'password': password}
+    with open('config.py', 'w') as config_file:
+        config_file.write('proxies = ' + str(_proxies) + '\n')
+        config_file.write('user_data = ' + str(_user_data) + '\n')
+
+    return _proxies, _user_data
+
+
+def get_data_from_config():
+    if os.path.exists('config.py'):
+        _proxies = _get_proxies_from_config()
+        _user_data = _get_user_data_from_config()
+        return _proxies, _user_data
+    else:
+        return _create_config_file()
+
+
 if __name__ == '__main__':
-    from config import user_data, proxies
+    proxies, user_data = get_data_from_config()
     logger = get_logger('INFO')
     wsis = Wsis(logger)
     wsis.proxies = proxies
