@@ -11,7 +11,6 @@ import logging
 # TODO: оптимизировать количество переходов на сайт. мне не нравится что это занимает так много времени
 # TODO: узнать сколько живёт сессия
 # TODO: Логгирование для дебаг-режима - в стдаут, продакшн - в файл
-# TODO: искать айди сессии не в хтмл, а в куках сразу
 # TODO: кэшировать что-нибудь по-возможности
 # TODO: рефактор под многопользовательский режим. лоадить куки под конкретного юзера. все реквесты под конкретных.
 
@@ -281,16 +280,28 @@ class Wsis:
             schedule.append(schedule_field)
         return schedule
 
-    def _print_schedule(self, schedule_list):
-        self.logging.debug('Печатаем расписание')
+    def print_schedule(self):
+        """
+        Функция для печати расписания
+        :return:
+        """
+        self.logging.info('Получаем расписание')
+        schedule_page_request = self._get_schedule_page_request()
+        if not schedule_page_request:
+            print('Failed')
 
-        for number, schedule_field in enumerate(schedule_list, 1):
-            print('********{}********'.format(number))
-            print('Тип...............{}'.format(schedule_field['lesson_type']))
-            print('Дата..............{}'.format(schedule_field['date']))
-            print('Время.............{}'.format(schedule_field['time']))
-            print('Занятие, уровни...{}'.format(schedule_field['unit']))
-            print('Описание занятия..{}'.format(schedule_field['description']))
+        elif schedule_page_request.status_code == 200:
+            schedule_html = schedule_page_request.text
+            schedule = self._get_schedule_from_html(schedule_html)
+            self.logging.debug('Печатаем расписание')
+
+            for number, schedule_field in enumerate(schedule, 1):
+                print('********{}********'.format(number))
+                print('Тип...............{}'.format(schedule_field['lesson_type']))
+                print('Дата..............{}'.format(schedule_field['date']))
+                print('Время.............{}'.format(schedule_field['time']))
+                print('Занятие, уровни...{}'.format(schedule_field['unit']))
+                print('Описание занятия..{}'.format(schedule_field['description']))
 
     def get_schedule(self):
         """
@@ -305,7 +316,7 @@ class Wsis:
         elif schedule_page_request.status_code == 200:
             schedule_html = schedule_page_request.text
             schedule = self._get_schedule_from_html(schedule_html)
-            self._print_schedule(schedule)
+            return schedule
 
 
 def get_logger(level):
@@ -373,5 +384,5 @@ if __name__ == '__main__':
     wsis = Wsis(logger)
     wsis.proxies = user_proxies
     wsis.login(user_data)
-    wsis.get_schedule()
+    wsis.print_schedule()
     wsis.logout()
