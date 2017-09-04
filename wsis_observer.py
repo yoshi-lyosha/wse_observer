@@ -4,10 +4,12 @@ import re
 import os
 import sys
 import errno
-import json
+import model
 import logging
+import datetime
 
 
+# TODO: перепилить логирование, больше детальности: кто что где как сделал
 # TODO: оптимизировать количество переходов на сайт. мне не нравится что это занимает так много времени
 # TODO: узнать сколько живёт сессия
 # TODO: Логгирование для дебаг-режима - в стдаут, продакшн - в файл
@@ -15,37 +17,7 @@ import logging
 # TODO: рефактор под многопользовательский режим. лоадить куки под конкретного юзера. все реквесты под конкретных.
 
 
-class CookieStorage:
-    @staticmethod
-    def cookie_load():
-        """
-        Загружает словарь с куками из файлика
-
-        :return:
-        cookie - словарь с куками
-        """
-        if not os.path.exists('cookie.json'):
-            logging.debug('Создаём файл для кук')
-            with open('cookie.json', 'w') as cookie_file:
-                json.dump({}, cookie_file)
-        logging.debug('Подгружаем куки')
-        with open('cookie.json') as cookie_file:
-            cookie = json.load(cookie_file)
-        return cookie
-
-    @staticmethod
-    def cookie_save(cookie):
-        """Сохраняет словарь с куками из файлика
-
-        :param cookie: словарь с куками
-        """
-        logging.debug('Сохраняем куки')
-        with open('cookie.json', 'w') as cookie_file:
-            json.dump(cookie, cookie_file)
-        return None
-
-
-class Wsis:
+class WSEObserver:
     """
     Класс для логина/логаута/получения расписания с ресурса под названием Wall Street English
 
@@ -54,7 +26,7 @@ class Wsis:
     wsis_index_url = 'http://www.wsistudents.com/'
     wsis_personal_page_url = 'http://www.wsistudents.com/splash.jhtml'
     redirect_page_url = 'http://www.wsistudents.com/switch2supersds.jhtml'
-    schedule_page_url = 'http://sdszone1.e-wsi.com//inhome/review.jhtml'
+    schedule_page_url = 'http://sdszone1.e-wsi.com/inhome/review.jhtml'
     wsis_login_data = {
         '_D:username': ' ',
         '_D:password': ' ',
@@ -69,10 +41,82 @@ class Wsis:
     def __init__(self, _logging):
         self.logging = _logging
 
-    def _get_login_data(self, user_login_data):
-        self.logging.debug('Генерим данные для логина')
+    def registration(self, login, password):
+        """
+        Создание нового студента в бд и пустых куки для него
+        :param login: логин студента для портала WSE
+        :param password: пароль студента для портала WSE
+        :return:
+        """
+        self.logging.info('Создаём нового юзера')
+        new_student = model.WSEStudent.create(wse_login=login, wse_password=password)
+        model.WSECookie.create(wse_student=new_student)
+        return new_student
+
+    def update_student_password(self, student, new_password):
+        """
+        Редактирование пароля студента для портала WSE
+        :param student: студент
+        :param new_password: новый пароль для портала WSE
+        :return:
+        """
+        self.logging.info('Редактируем пароль существующего юзера')
+        student.wse_password = new_password
+        student.save()
+
+    def update_student_username(self, student, new_username):
+        """
+        Редактирование логина для портала WSE
+        :param student: студент
+        :param new_username: новый логина для портала WSE
+        :return:
+        """
+        self.logging.info('Редактируем логин существующего юзера')
+        student.wse_login = new_username
+        student.save()
+
+    def delete_student_data(self, student):
+        """
+        Удаление студента и всего, что может быть с ним связано
+        :param student: студент
+        :return:
+        """
+        self.logging.info('Удаляем существующего юзера')
+        student_cookies = model.WSECookie.get(wse_student=student)
+        student_schedule = model.WSESchedule.select().where(model.WSESchedule.wse_student == student)
+        student_cookies.delete_instance()
+        [student_schedule_field.delete_instance() for student_schedule_field in student_schedule]
+        student.delete_instance()
+
+    def _update_student_cookie(self, student, new_wsis_cookie=None, new_schedule_cookie=None):
+        """
+        Обновление кук студента в базе данных
+        :param student: студент
+        :param new_wsis_cookie: куки для портала wsis
+        :param new_schedule_cookie: куки для портала с расписанием
+        :return:
+        """
+        self.logging.debug('Сохраняем куки')
+        student_cookie = model.WSECookie.get(wse_student=student)
+        if new_wsis_cookie:
+            student_cookie.wsis_cookie = new_wsis_cookie
+        if new_schedule_cookie:
+            student_cookie.schedule_cookie = new_schedule_cookie
+        student_cookie.save()
+
+    def _get_student_wsis_cookie(self, student):
+        self.logging.debug('Достаём куки студента для стартовой страницы')
+        return model.WSECookie.get(wse_student=student).wsis_cookie
+
+    def _get_student_schedule_cookie(self, student):
+        self.logging.debug('Достаём куки студента для расписания')
+        return model.WSECookie.get(wse_student=student).schedule_cookie
+
+    def _get_login_data(self, user):
+        self.logging.debug('Достаём из бд креды и генерим словарь для формы логина')
         login_data = dict(self.wsis_login_data)
-        login_data.update(user_login_data)
+        login_data['username'] = user.wse_login
+        login_data['password'] = user.wse_password
         return login_data
 
     def _get_login_url(self, index_html):
@@ -88,7 +132,7 @@ class Wsis:
         login_url = self.wsis_index_url + form_action_field
         return login_url
 
-    def _post_login_request(self, login_url, login_data):
+    def _post_login_request(self, login_data, login_url):
         """
         Отправляет POST реквест для логина
         :param login_url: урл для логина
@@ -99,126 +143,70 @@ class Wsis:
         login_post_request = requests.post(login_url, proxies=self.proxies, data=login_data)
         return login_post_request
 
-    def _login_and_save_session_id_cycle(self, login_data):
-        """
-        Цикл из трёх попыток логина и сохранения кук
-        :param login_data: словарь с информацией для логина
-        :return: True если логин удался, False если нет
-        """
-        for try_to_login in range(1, 4):
-            self.logging.debug('Пытаемся залогиниться, попытка {} из 3'.format(try_to_login))
-            index_page_request = requests.get(self.wsis_index_url, proxies=self.proxies)
-            index_html = index_page_request.text
-            login_post_request = self._post_login_request(self._get_login_url(index_html), login_data)
-            if login_post_request.status_code == 200:
-                self.logging.debug('POST запрос для логина прошёл успешно')
-                cookie = dict(index_page_request.cookies)
-                CookieStorage.cookie_save(cookie)
-                return True
-            else:
-                self.logging.warning('Логин не удался. Статус запроса {}'.format(login_post_request.status_code))
-        else:
-            self.logging.error('Не удалось залогиниться')
-            return False
-
-    def login(self, user_login_data):
-        """
-        Функция для логина на сайт
-        :param user_login_data: словарь с кредами юзера для логина
-        :return: True если логин удался, False если нет
-        """
+    def login(self, student):
         self.logging.info('Начинаем логиниться')
-        self.logging.debug('Проверяем не залогинен ли уже')
-        personal_page_request = self._get_personal_page_request()
-        if personal_page_request.status_code == 200:
-            self.logging.info('Уже залогинен')
-            return True
-        else:
+        self.logging.debug('Проверяем не залогинен ли уже/валидность кук')
+        index_page_request = requests.get(self.wsis_index_url,
+                                          cookies=self._get_student_wsis_cookie(student),
+                                          proxies=self.proxies)
+        if 'WELCOME TO YOUR WALL STREET ENGLISH' in index_page_request.text:
             self.logging.debug('Не залогинен')
-            login_data = self._get_login_data(user_login_data)
-            self._login_and_save_session_id_cycle(login_data)
-            if self._get_personal_page_request().status_code == 200:
-                self.logging.info('Логин прошёл успешно')
-                return True
-            else:
-                self.logging.error('Логин не удался, возможно, данные указаны неправильно')
-                return False
+            index_page_request = requests.get(self.wsis_index_url, proxies=self.proxies)
+            index_page_html = index_page_request.text
+            self._post_login_request(self._get_login_data(student), self._get_login_url(index_page_html))
+            wsis_cookie = dict(index_page_request.cookies)
+            self._update_student_cookie(student, new_wsis_cookie=wsis_cookie)
+            self.logging.info('Логин завершён')
+        else:
+            self.logging.info('Уже залогинен')
 
-    def _get_personal_page_request(self):
+    def _get_personal_page_request(self, student):
         """
         GET реквест перехода на персональную страницу ресурса WSIStudents
         :return: реквест
         """
         self.logging.debug('Запрос персональной страницы')
-        cookie = CookieStorage.cookie_load()
-        personal_page_request = requests.get(self.wsis_personal_page_url, proxies=self.proxies, cookies=cookie)
+        personal_page_request = requests.get(self.wsis_personal_page_url,
+                                             cookies=self._get_student_wsis_cookie(student),
+                                             proxies=self.proxies)
         return personal_page_request
 
-    def _get_logout_url(self):
+    def _get_logout_url(self, index_html):
         """
         Получить logout_url с персональной страницы пользователя
         :return: logout_url либо None
         """
         self.logging.debug('Получаем из персональной страницы урл для разлогина')
-        personal_page_request = self._get_personal_page_request()
-        if personal_page_request.status_code == 200:
-            final_html = personal_page_request.content
-            final_soup = BeS(final_html, 'html.parser')
-            logout_url = self.wsis_index_url + final_soup.find(id="headerWrapper").a.get('href')
-            self.logging.debug('Урл для разлогина получен')
-            return logout_url
-        else:
-            self.logging.error('Нет доступа к персональной странице для разлогина')
-            return None
+        index_soup = BeS(index_html, 'html.parser')
+        logout_url = self.wsis_index_url + index_soup.find(id="headerWrapper").a.get('href')
+        self.logging.debug('Урл для разлогина получен')
+        return logout_url
 
-    def _post_logout_request(self, logout_url):
+    def _post_logout_request(self, student, logout_url):
         """
         Отправляет POST реквест для логаута
         :param logout_url: урл для логаута
         :return: POST реквест логаута
         """
         self.logging.debug('Совершаем POST-запрос на логаут')
-        cookie = CookieStorage.cookie_load()
-        logout_post_request = requests.post(logout_url, proxies=self.proxies, cookies=cookie)
+        logout_post_request = requests.post(logout_url,
+                                            cookies=self._get_student_wsis_cookie(student),
+                                            proxies=self.proxies)
         return logout_post_request
 
-    def _logout_cycle(self):
-        """
-        Цикл из трёх попыток логаута
-        :return: True если логаут прошёл, False если нет
-        """
-        for try_to_logout in range(1, 4):
-            self.logging.debug('Пытаемся разлогиниться, попытка {} из 3'.format(try_to_logout))
-
-            logout_url = self._get_logout_url()
-            logout_post_request = self._post_logout_request(logout_url)
-            if logout_post_request.status_code == 200:
-                self.logging.debug('POST запрос для логаута прошёл успешно')
-                return True
-            else:
-                self.logging.warning('Логаут не удался. Статус запроса {}'.format(logout_post_request.status_code))
-        else:
-            self.logging.debug('Не удалось сделать логаут')
-            return False
-
-    def logout(self):
-        """
-        Функция для логаута из ресурс
-        :return: True если логаут прошёл, False если нет
-        """
+    def logout(self, student):
         self.logging.info('Начинаем логаут')
         self.logging.debug('Проверяем не разлогинен ли уже')
-        personal_page_request = self._get_personal_page_request()
-        if personal_page_request.status_code == 200:
-            self.logging.debug('Залогинен, начинаю логаут')
-            logout_result = self._logout_cycle()
-            if logout_result:
-                self.logging.info('Логаут прошёл успешно')
-            else:
-                self.logging.error('Не удалось сделать логаут')
-        else:
+        index_page_request = requests.get(self.wsis_index_url,
+                                          cookies=self._get_student_wsis_cookie(student),
+                                          proxies=self.proxies)
+        index_page_html = index_page_request.text
+        if 'WELCOME TO YOUR WALL STREET ENGLISH' in index_page_html:
             self.logging.info('Уже разлогинен')
-            return True
+        else:
+            self.logging.debug('Не разлогинен')
+            self._post_logout_request(student, self._get_logout_url(index_page_html))
+            self.logging.info('Логин завершён')
 
     def _get_schedule_page_request(self):
         """
@@ -241,7 +229,7 @@ class Wsis:
             self.logging.error('Запрос страницы с расписанием прошёл неуспешно :с')
             return False
 
-    def _get_schedule_from_html(self, schedule_html):
+    def _find_schedule_fields_list_in_html(self, schedule_html):
         """
         Функция для парсинга расписания в html
         :param schedule_html: хтмл страница с расписанием
@@ -252,7 +240,7 @@ class Wsis:
         schedule_soup = BeS(schedule_html, 'html.parser')
         schedule_table = schedule_soup.body.find_all('table')[2]
         tr_list = schedule_table.find_all('tr')
-        schedule = []
+        schedule_fields_list = []
 
         for tr in tr_list[1:-1]:
             schedule_field = dict()
@@ -277,46 +265,55 @@ class Wsis:
             schedule_field['unit'] = ' '.join(word for word in unit)
             schedule_field['description'] = ' '.join(word for word in description)
 
-            schedule.append(schedule_field)
-        return schedule
+            schedule_fields_list.append(schedule_field)
+        return schedule_fields_list
 
-    def print_schedule(self):
+    def print_schedule(self, student):
         """
         Функция для печати расписания
         :return:
         """
+
+        schedule_fields_list = self.get_schedule_fields_list(student)
+        self.logging.info('Печатаем расписание')
+
+        for number, schedule_field in enumerate(schedule_fields_list, 1):
+            print('********{}********'.format(number))
+            print('Тип...............{}'.format(schedule_field['lesson_type']))
+            print('Дата..............{}'.format(schedule_field['date']))
+            print('Время.............{}'.format(schedule_field['time']))
+            print('Занятие, уровни...{}'.format(schedule_field['unit']))
+            print('Описание занятия..{}'.format(schedule_field['description']))
+
+    def get_schedule_fields_list(self, student):
         self.logging.info('Получаем расписание')
-        schedule_page_request = self._get_schedule_page_request()
-        if not schedule_page_request:
-            print('Failed')
+        schedule_page_request = requests.get(self.schedule_page_url,
+                                             cookies=self._get_student_schedule_cookie(student),
+                                             proxies=self.proxies )
+        if '/system_error.jhtml' in schedule_page_request.text:
+            self.logging.info('Не залогинены')
+            self.login(student)
+        redirect_page_request = requests.get(self.redirect_page_url,
+                                             cookies=self._get_student_wsis_cookie(student),
+                                             proxies=self.proxies)
+        schedule_cookie = self._get_schedule_cookie_from_redirect_script(redirect_page_request.text)
+        self._update_student_cookie(student, new_schedule_cookie=schedule_cookie)
+        schedule_page_request = requests.get(self.schedule_page_url,
+                                             cookies=self._get_student_schedule_cookie(student),
+                                             proxies=self.proxies)
+        schedule_fields_list = self._find_schedule_fields_list_in_html(schedule_page_request.text)
+        return schedule_fields_list
 
-        elif schedule_page_request.status_code == 200:
-            schedule_html = schedule_page_request.text
-            schedule = self._get_schedule_from_html(schedule_html)
-            self.logging.debug('Печатаем расписание')
+    def _get_schedule_cookie_from_redirect_script(self, redirect_html):
+        self.logging.debug('Извлекаем из скрипта редиректа новые куки')
+        redirect_page_soup = BeS(redirect_html, 'html.parser')
+        schedule_cookie = {}
+        redirect_script = redirect_page_soup.find('script')
+        var_redirectsessionid_pattern = r'var redirectSessionId = \'(.*)\''
+        schedule_cookie['JSESSIONID'] = re.search(var_redirectsessionid_pattern, redirect_script.text).group(1)
+        return schedule_cookie
 
-            for number, schedule_field in enumerate(schedule, 1):
-                print('********{}********'.format(number))
-                print('Тип...............{}'.format(schedule_field['lesson_type']))
-                print('Дата..............{}'.format(schedule_field['date']))
-                print('Время.............{}'.format(schedule_field['time']))
-                print('Занятие, уровни...{}'.format(schedule_field['unit']))
-                print('Описание занятия..{}'.format(schedule_field['description']))
-
-    def get_schedule(self):
-        """
-        Функция для получения расписания
-        :return:
-        """
-        self.logging.info('Получаем расписание')
-        schedule_page_request = self._get_schedule_page_request()
-        if not schedule_page_request:
-            return False
-
-        elif schedule_page_request.status_code == 200:
-            schedule_html = schedule_page_request.text
-            schedule = self._get_schedule_from_html(schedule_html)
-            return schedule
+# TODO: get_schedule -> update_schedule
 
 
 def get_logger(level):
@@ -381,8 +378,9 @@ def get_data_from_config():
 if __name__ == '__main__':
     user_proxies, user_data = get_data_from_config()
     logger = get_logger('info')
-    wsis = Wsis(logger)
+    wsis = WSEObserver(logger)
     wsis.proxies = user_proxies
-    wsis.login(user_data)
-    wsis.print_schedule()
-    wsis.logout()
+    user = model.WSEStudent.get(id=1)
+    # wsis.login(user)
+    wsis.print_schedule(user)
+    # wsis.logout(user)
