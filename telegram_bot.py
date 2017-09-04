@@ -4,7 +4,7 @@ import traceback
 import model
 import re
 from config import telegram_token
-from wsis_observer import WSEObserver, get_data_from_config, get_logger
+from wse_observer import WSEObserver, get_data_from_config, get_logger
 
 bot = telebot.TeleBot(telegram_token)
 user_proxies, student_data = get_data_from_config()
