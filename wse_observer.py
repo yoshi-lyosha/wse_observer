@@ -10,11 +10,9 @@ import datetime
 
 
 # TODO: перепилить логирование, больше детальности: кто что где как сделал
-# TODO: оптимизировать количество переходов на сайт. мне не нравится что это занимает так много времени
 # TODO: узнать сколько живёт сессия
 # TODO: Логгирование для дебаг-режима - в стдаут, продакшн - в файл
 # TODO: кэшировать что-нибудь по-возможности
-# TODO: рефактор под многопользовательский режим. лоадить куки под конкретного юзера. все реквесты под конкретных.
 
 
 class WSEObserver:
@@ -207,27 +205,6 @@ class WSEObserver:
             self.logging.debug('Не разлогинен')
             self._post_logout_request(student, self._get_logout_url(index_page_html))
             self.logging.info('Логин завершён')
-
-    def _get_schedule_page_request(self):
-        """
-        GET реквест перехода на страницу с расписанием ресурса WSIStudents
-        :return: реквест
-        """
-        self.logging.debug('Запрос страницы с расписанием')
-        cookie = CookieStorage.cookie_load()
-        redirect_page_request = requests.get(self.redirect_page_url, proxies=self.proxies, cookies=cookie)
-        if redirect_page_request.status_code == 200:
-            redirect_page_soup = BeS(redirect_page_request.text, 'html.parser')
-            shedule_cookie = {}
-            redirect_script = redirect_page_soup.find('script')
-            var_redirectsessionid_pattern = r'var redirectSessionId = \'(.*)\''
-            shedule_cookie['JSESSIONID'] = re.search(var_redirectsessionid_pattern, redirect_script.text).group(1)
-            self.logging.debug('Получены куки для получения расписания')
-            schedule_page_request = requests.get(self.schedule_page_url, proxies=self.proxies, cookies=shedule_cookie)
-            return schedule_page_request
-        else:
-            self.logging.error('Запрос страницы с расписанием прошёл неуспешно :с')
-            return False
 
     def _find_schedule_fields_list_in_html(self, schedule_html):
         """
