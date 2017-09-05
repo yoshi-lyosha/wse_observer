@@ -17,8 +17,8 @@ class WSEStudent(Model):
 class WSESchedule(Model):
     wse_student = ForeignKeyField(WSEStudent, related_name='student_schedule')
     lesson_type = CharField()
-    lesson_date = DateField()
-    lesson_time = TimeField()
+    lesson_date = CharField()
+    lesson_time = CharField()
     lesson_levels = CharField()
     lesson_description = CharField()
 

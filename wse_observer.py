@@ -1,13 +1,13 @@
-import requests
-from bs4 import BeautifulSoup as BeS
 import re
 import os
 import sys
 import errno
 import model
 import logging
-import datetime
+import requests
 
+from datetime import datetime
+from bs4 import BeautifulSoup as BeS
 
 # TODO: перепилить логирование, больше детальности: кто что где как сделал
 # TODO: узнать сколько живёт сессия
@@ -255,12 +255,23 @@ class WSEObserver:
         self.logging.info('Печатаем расписание')
 
         for number, schedule_field in enumerate(schedule_fields_list, 1):
-            print('********{}********'.format(number))
-            print('Тип...............{}'.format(schedule_field['lesson_type']))
-            print('Дата..............{}'.format(schedule_field['date']))
-            print('Время.............{}'.format(schedule_field['time']))
-            print('Занятие, уровни...{}'.format(schedule_field['unit']))
-            print('Описание занятия..{}'.format(schedule_field['description']))
+            # парсим строку со временем, считаем длительность занятия
+            time_pattern = r'(?P<start_time>\d{2}:\d{2}) - (?P<finish_time>\d{2}:\d{2})'
+            parsed_time = re.search(time_pattern, schedule_field['time'])
+            start_time = datetime.strptime(parsed_time.group('start_time'), '%H:%M')
+            finish_time = datetime.strptime(parsed_time.group('finish_time'), '%H:%M')
+            schedule_field['lesson_duration_minutes'] = (finish_time - start_time).seconds // 60
+            # выводим дату красиво
+            beautiful_date = datetime.strptime(schedule_field['date'], '%d/%m/%Y').strftime('%A, %d/%b')
+            schedule_field['beautiful_date'] = beautiful_date
+
+            print('*********{}*********'.format(number))
+            print('Тип...........{}'.format(schedule_field['lesson_type']))
+            print('Дата..........{}'.format(schedule_field['beautiful_date']))
+            print('Начало........{}'.format(start_time.strftime('%H:%M')))
+            print('Длительность..{}min'.format(schedule_field['lesson_duration_minutes']))
+            print('Уровни........{}'.format(schedule_field['unit']))
+            print('Описание......{}'.format(schedule_field['description'])) if schedule_field['description'] else None
 
     def get_schedule_fields_list(self, student):
         self.logging.info('Получаем расписание')
@@ -357,7 +368,5 @@ if __name__ == '__main__':
     logger = get_logger('info')
     wsis = WSEObserver(logger)
     wsis.proxies = user_proxies
-    user = model.WSEStudent.get(id=1)
-    # wsis.login(user)
+    user = model.WSEStudent.get(wse_login=user_data['username'])
     wsis.print_schedule(user)
-    # wsis.logout(user)

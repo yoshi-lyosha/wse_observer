@@ -1,8 +1,10 @@
-import telebot
-import sys
-import traceback
-import model
 import re
+import sys
+import model
+import telebot
+import traceback
+
+from datetime import datetime
 from config import telegram_token
 from wse_observer import WSEObserver, get_data_from_config, get_logger
 
@@ -104,15 +106,29 @@ def get_schedule(message):
     wse_student = model.WSEStudent.get(id=model.TelegramUser.get(chat_id=message.chat.id).wse_student_id)
     schedule_fields_list = wsis.get_schedule_fields_list(wse_student)
 
-    outcoming_msg = str()
+    outcoming_msg = str()  # заготовка для сообщения с расписанием
     for number, schedule_field in enumerate(schedule_fields_list, 1):
-        outcoming_msg += '********{}********\n'.format(number)
-        outcoming_msg += 'Тип...............{}\n'.format(schedule_field['lesson_type'])
-        outcoming_msg += 'Дата..............{}\n'.format(schedule_field['date'])
-        outcoming_msg += 'Время.............{}\n'.format(schedule_field['time'])
-        outcoming_msg += 'Занятие, уровни...{}\n'.format(schedule_field['unit'])
-        outcoming_msg += 'Описание занятия..{}\n\n'.format(schedule_field['description'])
+        # парсим строку со временем, считаем длительность занятия
+        time_pattern = r'(?P<start_time>\d{2}:\d{2}) - (?P<finish_time>\d{2}:\d{2})'
+        parsed_time = re.search(time_pattern, schedule_field['time'])
+        start_time = datetime.strptime(parsed_time.group('start_time'), '%H:%M')
+        finish_time = datetime.strptime(parsed_time.group('finish_time'), '%H:%M')
+        schedule_field['lesson_duration_minutes'] = (finish_time - start_time).seconds // 60
+        # выводим дату красиво
+        beautiful_date = datetime.strptime(schedule_field['date'], '%d/%m/%Y').strftime('%A %d/%b')
+        schedule_field['beautiful_date'] = beautiful_date
 
-    bot.send_message(message.chat.id,
-                     '```\n' + outcoming_msg + '```',
-                     parse_mode='Markdown')
+        outcoming_msg += '*********{}*********\n'.format(number)
+        outcoming_msg += 'Type..........{}\n'.format(schedule_field['lesson_type'])
+        outcoming_msg += 'Date..........{}\n'.format(schedule_field['beautiful_date'])
+        outcoming_msg += 'Time..........{}\n'.format(start_time.strftime('%H:%M'))
+        outcoming_msg += 'Duration......{} min\n'.format(schedule_field['lesson_duration_minutes'])
+        outcoming_msg += 'Unit..........{}\n'.format(schedule_field['unit'])
+        outcoming_msg += 'Description...{}\n\n'.format(schedule_field['description']) \
+            if schedule_field['description'] else '\n'  # часто нет описания
+    if outcoming_msg:
+        bot.send_message(message.chat.id,
+                         '```\n' + outcoming_msg + '```',
+                         parse_mode='Markdown')
+    else:
+        bot.send_message(message.chat.id, 'Your schedule is empty')
