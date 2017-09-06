@@ -9,6 +9,7 @@ import requests
 from datetime import datetime
 from bs4 import BeautifulSoup as BeS
 
+# TODO: следующая итерация - обработать исключения, если креды невалидны
 # TODO: перепилить логирование, больше детальности: кто что где как сделал
 # TODO: узнать сколько живёт сессия
 # TODO: Логгирование для дебаг-режима - в стдаут, продакшн - в файл
@@ -110,11 +111,11 @@ class WSEObserver:
         self.logging.debug('Достаём куки студента для расписания')
         return model.WSECookie.get(wse_student=student).schedule_cookie
 
-    def _get_login_data(self, user):
+    def _get_login_data(self, student):
         self.logging.debug('Достаём из бд креды и генерим словарь для формы логина')
         login_data = dict(self.wsis_login_data)
-        login_data['username'] = user.wse_login
-        login_data['password'] = user.wse_password
+        login_data['username'] = student.wse_login
+        login_data['password'] = student.wse_password
         return login_data
 
     def _get_login_url(self, index_html):
@@ -277,7 +278,7 @@ class WSEObserver:
         self.logging.info('Получаем расписание')
         schedule_page_request = requests.get(self.schedule_page_url,
                                              cookies=self._get_student_schedule_cookie(student),
-                                             proxies=self.proxies )
+                                             proxies=self.proxies)
         if '/system_error.jhtml' in schedule_page_request.text:
             self.logging.info('Не залогинены')
             self.login(student)
