@@ -1,5 +1,5 @@
 from peewee import (Model, SqliteDatabase,
-                    CharField, ForeignKeyField, DateField, TimeField)
+                    CharField, ForeignKeyField, DateTimeField)
 from playhouse.fields import PickledField
 
 db = SqliteDatabase('wse.db')
@@ -21,6 +21,7 @@ class WSESchedule(Model):
     lesson_time = CharField()
     lesson_levels = CharField()
     lesson_description = CharField()
+    lesson_datetime = DateTimeField()
 
     class Meta:
         database = db
