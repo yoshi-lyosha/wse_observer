@@ -17,6 +17,7 @@ wsis.proxies = user_proxies
 
 user_dict = {}
 
+
 # TODO: следующая итерация - обработать исключения, если креды невалидны
 
 
@@ -58,15 +59,15 @@ def registration(message):
     else:
         bot.send_message(message.chat.id, 'Welcome to WSE Schedule observer!\n'
                                           'Firstly, you need to enter your credentials')
-        msg = bot.reply_to(message, 'Enter your WSE username')
-        bot.register_next_step_handler(msg, login_get_step)
+        msg = bot.reply_to(message, 'Enter your WSE username', reply_markup=types.ForceReply())
+        bot.register_for_reply(msg, login_get_step)
 
 
 def login_get_step(message):
     try:
         user_dict[message.chat.id] = {'wse_username': message.text}
-        msg = bot.reply_to(message, 'Enter your WSE password')
-        bot.register_next_step_handler(msg, password_get_step)
+        msg = bot.reply_to(message, 'Enter your WSE password', reply_markup=types.ForceReply())
+        bot.register_for_reply(msg, password_get_step)
     except Exception as e:
         bot.reply_to(message, 'Failed: {}'.format(e))
 
@@ -86,29 +87,31 @@ def password_get_step(message):
 @bot.message_handler(regexp='Change password')
 @is_registered_student
 def change_password(message):
-    msg = bot.reply_to(message, 'Enter new password')
-    bot.register_next_step_handler(msg, change_password_step)
+    msg = bot.reply_to(message, 'Enter new password', reply_markup=types.ForceReply())
+    bot.register_for_reply(msg, change_password_step)
 
 
 def change_password_step(message):
     new_password = message.text
     wse_student = model.WSEStudent.get(id=model.TelegramUser.get(chat_id=message.chat.id).wse_student_id)
     wsis.update_student_password(wse_student, new_password)
-    bot.send_message(message.chat.id, 'Student\'s password was changed successfully!')
+    bot.send_message(message.chat.id, 'Student\'s password was changed successfully!',
+                     reply_markup=generate_keyboard_markup())
 
 
 @bot.message_handler(regexp='Change username')
 @is_registered_student
 def change_student_username(message):
-    msg = bot.reply_to(message, 'Enter new student username')
-    bot.register_next_step_handler(msg, change_student_username_step)
+    msg = bot.reply_to(message, 'Enter new student username', reply_markup=types.ForceReply())
+    bot.register_for_reply(msg, change_student_username_step)
 
 
 def change_student_username_step(message):
     student_new_username = message.text
     wse_student = model.WSEStudent.get(id=model.TelegramUser.get(chat_id=message.chat.id).wse_student_id)
     wsis.update_student_username(wse_student, student_new_username)
-    bot.send_message(message.chat.id, 'Student\'s username was changed successfully!')
+    bot.send_message(message.chat.id, 'Student\'s username was changed successfully!',
+                     reply_markup=generate_keyboard_markup())
 
 
 @bot.message_handler(commands=['delete_student'])
