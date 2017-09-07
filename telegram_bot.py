@@ -40,7 +40,9 @@ def is_registered_student(foo):
         if tg_user:
             foo(message)
         else:
-            bot.send_message(message.chat.id, 'You are not registered!')
+            registration_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            registration_markup.row('/start')
+            bot.send_message(message.chat.id, 'You are not registered!', reply_markup=registration_markup)
     return wrapper
 
 
