@@ -13,11 +13,11 @@ WEBHOOK_SSL_CERT = './webhook_cert.pem'  # Путь к сертификату
 WEBHOOK_SSL_PRIV = './webhook_pkey.pem'  # Путь к закрытому ключу
 
 WEBHOOK_URL_BASE = "https://{!s}:{!s}".format(WEBHOOK_HOST, WEBHOOK_PORT)
-WEBHOOK_URL_PATH = "{!s}".format(API_TOKEN)
+WEBHOOK_URL_PATH = "/{!s}/".format(API_TOKEN)
 # Вводим здесь IP-адреса и порты, куда перенаправлять входящие запросы.
 # Т.к. всё на одной машине, то используем локалхост + какие-нибудь свободные порты.
 # https в данном случае не нужен, шифровать незачем.
-BOT_ADDRESS = "http://127.0.0.1:7771"
+# BOT_ADDRESS = "http://127.0.0.1:7771"
 
 
 # Описываем наш сервер
