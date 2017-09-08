@@ -1,4 +1,5 @@
+peewee
+cherrypy
 requests
 beautifulsoup4
 pytelegrambotapi
-peewee

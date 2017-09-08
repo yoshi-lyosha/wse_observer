@@ -172,3 +172,10 @@ def get_schedule(message):
         bot.send_message(message.chat.id, 'Wrong username/password.\n'
                                           'Or error in this bot. If so: contact the developer\n'
                                           '@yoshi-lyosha')
+
+
+if __name__ == '__main__':
+    from telebot import apihelper
+    from config import proxies
+    apihelper.proxy = proxies
+    bot.polling(none_stop=True)
