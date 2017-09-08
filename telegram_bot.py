@@ -123,40 +123,52 @@ def delete_student(message):
     wse_student = model.WSEStudent.get(id=tg_user.wse_student_id)
     wsis.delete_student_data(wse_student)
     tg_user.delete_instance()
-    clean_markup = types.ReplyKeyboardRemove()
-    bot.send_message(message.chat.id, "Student deleted.", reply_markup=clean_markup)
+    registration_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    registration_markup.row('/start')
+    bot.send_message(message.chat.id, "Student deleted.", reply_markup=registration_markup)
 
 
 @bot.message_handler(regexp='Get schedule')
 @is_registered_student
 @exception_handler
 def get_schedule(message):
+    # TODO: функция слишком большая. пофиксить
     wse_student = model.WSEStudent.get(id=model.TelegramUser.get(chat_id=message.chat.id).wse_student_id)
-    schedule_fields_list = wsis.get_schedule_fields_list(wse_student)
 
-    outcoming_msg = str()  # заготовка для сообщения с расписанием
-    for number, schedule_field in enumerate(schedule_fields_list, 1):
-        # парсим строку со временем, считаем длительность занятия
-        time_pattern = r'(?P<start_time>\d{2}:\d{2}) - (?P<finish_time>\d{2}:\d{2})'
-        parsed_time = re.search(time_pattern, schedule_field['time'])
-        start_time = datetime.strptime(parsed_time.group('start_time'), '%H:%M')
-        finish_time = datetime.strptime(parsed_time.group('finish_time'), '%H:%M')
-        schedule_field['lesson_duration_minutes'] = (finish_time - start_time).seconds // 60
-        # выводим дату красиво
-        beautiful_date = datetime.strptime(schedule_field['date'], '%d/%m/%Y').strftime('%A %d/%b')
-        schedule_field['beautiful_date'] = beautiful_date
+    logging_in = wsis.login(wse_student)
+    if logging_in:
+        schedule_fields_list = wsis.get_schedule_fields_list(wse_student)
+        if schedule_fields_list == 'Error':
+            bot.send_message(message.chat.id, 'Unexpected error: contact the developer\n'
+                                              '@yoshi-lyosha')
+        else:
+            outcoming_msg = str()  # заготовка для сообщения с расписанием
+            for number, schedule_field in enumerate(schedule_fields_list, 1):
+                # парсим строку со временем, считаем длительность занятия
+                time_pattern = r'(?P<start_time>\d{2}:\d{2}) - (?P<finish_time>\d{2}:\d{2})'
+                parsed_time = re.search(time_pattern, schedule_field['time'])
+                start_time = datetime.strptime(parsed_time.group('start_time'), '%H:%M')
+                finish_time = datetime.strptime(parsed_time.group('finish_time'), '%H:%M')
+                schedule_field['lesson_duration_minutes'] = (finish_time - start_time).seconds // 60
+                # выводим дату красиво
+                beautiful_date = datetime.strptime(schedule_field['date'], '%d/%m/%Y').strftime('%A %d/%b')
+                schedule_field['beautiful_date'] = beautiful_date
 
-        outcoming_msg += '*********{}*********\n'.format(number)
-        outcoming_msg += 'Type..........{}\n'.format(schedule_field['lesson_type'])
-        outcoming_msg += 'Date..........{}\n'.format(schedule_field['beautiful_date'])
-        outcoming_msg += 'Time..........{}\n'.format(start_time.strftime('%H:%M'))
-        outcoming_msg += 'Duration......{} min\n'.format(schedule_field['lesson_duration_minutes'])
-        outcoming_msg += 'Unit..........{}\n'.format(schedule_field['unit'])
-        outcoming_msg += 'Description...{}\n\n'.format(schedule_field['description']) \
-            if schedule_field['description'] else '\n'  # часто нет описания
-    if outcoming_msg:
-        bot.send_message(message.chat.id,
-                         '```\n' + outcoming_msg + '```',
-                         parse_mode='Markdown')
+                outcoming_msg += '*********{}*********\n'.format(number)
+                outcoming_msg += 'Type..........{}\n'.format(schedule_field['lesson_type'])
+                outcoming_msg += 'Date..........{}\n'.format(schedule_field['beautiful_date'])
+                outcoming_msg += 'Time..........{}\n'.format(start_time.strftime('%H:%M'))
+                outcoming_msg += 'Duration......{} min\n'.format(schedule_field['lesson_duration_minutes'])
+                outcoming_msg += 'Unit..........{}\n'.format(schedule_field['unit'])
+                outcoming_msg += 'Description...{}\n\n'.format(schedule_field['description']) \
+                    if schedule_field['description'] else '\n'  # часто нет описания
+            if outcoming_msg:
+                bot.send_message(message.chat.id,
+                                 '```\n' + outcoming_msg + '```',
+                                 parse_mode='Markdown')
+            else:
+                bot.send_message(message.chat.id, 'Your schedule is empty')
     else:
-        bot.send_message(message.chat.id, 'Your schedule is empty')
+        bot.send_message(message.chat.id, 'Wrong username/password.\n'
+                                          'Or error in this bot. If so: contact the developer\n'
+                                          '@yoshi-lyosha')

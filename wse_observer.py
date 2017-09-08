@@ -142,22 +142,36 @@ class WSEObserver:
         login_post_request = requests.post(login_url, proxies=self.proxies, data=login_data)
         return login_post_request
 
-    def login(self, student):
-        self.logging.info('Начинаем логиниться')
+    def _logged_already_check(self, student):
         self.logging.debug('Проверяем не залогинен ли уже/валидность кук')
         index_page_request = requests.get(self.wsis_index_url,
                                           cookies=self._get_student_wsis_cookie(student),
                                           proxies=self.proxies)
         if 'WELCOME TO YOUR WALL STREET ENGLISH' in index_page_request.text:
+            return False
+        else:
+            return True
+
+    def login(self, student):
+        self.logging.info('Начинаем логиниться')
+        already_logged_in = self._logged_already_check(student)
+        if not already_logged_in:
             self.logging.debug('Не залогинен')
             index_page_request = requests.get(self.wsis_index_url, proxies=self.proxies)
             index_page_html = index_page_request.text
             self._post_login_request(self._get_login_data(student), self._get_login_url(index_page_html))
             wsis_cookie = dict(index_page_request.cookies)
             self._update_student_cookie(student, new_wsis_cookie=wsis_cookie)
-            self.logging.info('Логин завершён')
+            login_check = self._logged_already_check(student)
+            if login_check:
+                self.logging.info('Логин завершён')
+                return True
+            else:
+                self.logging.warning('Логин не удался. Возможно, данные введены неправильно')
+                return False
         else:
             self.logging.info('Уже залогинен')
+            return True
 
     def _get_personal_page_request(self, student):
         """
@@ -276,12 +290,6 @@ class WSEObserver:
 
     def get_schedule_fields_list(self, student):
         self.logging.info('Получаем расписание')
-        schedule_page_request = requests.get(self.schedule_page_url,
-                                             cookies=self._get_student_schedule_cookie(student),
-                                             proxies=self.proxies)
-        if '/system_error.jhtml' in schedule_page_request.text:
-            self.logging.info('Не залогинены')
-            self.login(student)
         redirect_page_request = requests.get(self.redirect_page_url,
                                              cookies=self._get_student_wsis_cookie(student),
                                              proxies=self.proxies)
@@ -290,6 +298,9 @@ class WSEObserver:
         schedule_page_request = requests.get(self.schedule_page_url,
                                              cookies=self._get_student_schedule_cookie(student),
                                              proxies=self.proxies)
+        if '/system_error.jhtml' in schedule_page_request.text:
+            self.logging.warning('Что-то не так')
+            return 'Error'
         schedule_fields_list = self._find_schedule_fields_list_in_html(schedule_page_request.text)
         return schedule_fields_list
 
@@ -370,4 +381,5 @@ if __name__ == '__main__':
     wsis = WSEObserver(logger)
     wsis.proxies = user_proxies
     user = model.WSEStudent.get(wse_login=user_data['username'])
+    wsis.login(user)
     wsis.print_schedule(user)
