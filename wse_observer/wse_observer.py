@@ -318,6 +318,10 @@ class WSEObserver:
 
 def get_logger(level):
     _logger = logging.getLogger()
+
+    fh = logging.FileHandler('wse.log', encoding='utf8')
+    fh.setLevel(logging.DEBUG)
+
     ch = logging.StreamHandler()
 
     if 'debug' in level.lower():
@@ -329,57 +333,18 @@ def get_logger(level):
 
     formatter = logging.Formatter('%(asctime)s [%(levelname)s]  %(message)s')
     ch.setFormatter(formatter)
+    fh.setFormatter(formatter)
 
+    _logger.addHandler(fh)
     _logger.addHandler(ch)
     return _logger
 
 
-def _get_proxies_from_config():
-    try:
-        from config import proxies
-        return proxies
-    except ImportError:
-        proxies = {}
-        return proxies
-
-
-def _get_user_data_from_config():
-    try:
-        from config import user_data
-        return user_data
-    except Exception as e:
-        print(e)
-        sys.exit(errno.ENOENT)
-
-
-def _create_config_file():
-    http_proxy = input('Enter http proxy: ')
-    https_proxy = input('Enter https proxy: ')
-    _proxies = {'http': http_proxy, 'https': https_proxy}
-    username = input('Enter username: ')
-    password = input('Enter password: ')
-    _user_data = {'username': username, 'password': password}
-    with open('config.py', 'w') as config_file:
-        config_file.write('proxies = ' + str(_proxies) + '\n')
-        config_file.write('user_data = ' + str(_user_data) + '\n')
-
-    return _proxies, _user_data
-
-
-def get_data_from_config():
-    if os.path.exists('config.py'):
-        _proxies = _get_proxies_from_config()
-        _user_data = _get_user_data_from_config()
-        return _proxies, _user_data
-    else:
-        return _create_config_file()
-
-
 if __name__ == '__main__':
-    user_proxies, user_data = get_data_from_config()
+    from config import user_data, proxies
     logger = get_logger('info')
     wsis = WSEObserver(logger)
-    wsis.proxies = user_proxies
+    wsis.proxies = proxies
     user = model.WSEStudent.get(wse_login=user_data['username'])
     wsis.login(user)
     wsis.print_schedule(user)

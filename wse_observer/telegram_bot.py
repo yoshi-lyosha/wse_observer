@@ -6,14 +6,13 @@ import traceback
 
 from telebot import types
 from datetime import datetime
-from config import telegram_token
-from wse_observer import WSEObserver, get_data_from_config, get_logger
+from wse_observer import WSEObserver, get_logger
+from config import telegram_token, proxies, admin_id
 
 bot = telebot.TeleBot(telegram_token)
-user_proxies, student_data = get_data_from_config()
 logger = get_logger('info')
 wsis = WSEObserver(logger)
-wsis.proxies = user_proxies
+wsis.proxies = proxies
 
 user_dict = {}
 
@@ -21,13 +20,13 @@ user_dict = {}
 # TODO: следующая итерация - обработать исключения, если креды невалидны
 
 
-def exception_handler(foo):
+def send_exception_to_admin(foo):
     def wrapper(message):
         try:
             foo(message)
         except Exception:
             exc_info = sys.exc_info()
-            bot.send_message(message.chat.id,
+            bot.send_message(admin_id,
                              '```\n{}```'.format(''.join(traceback.format_exception(*exc_info))),
                              parse_mode='Markdown')
             del exc_info
@@ -130,7 +129,6 @@ def delete_student(message):
 
 @bot.message_handler(regexp='Get schedule')
 @is_registered_student
-@exception_handler
 def get_schedule(message):
     # TODO: функция слишком большая. пофиксить
     wse_student = model.WSEStudent.get(id=model.TelegramUser.get(chat_id=message.chat.id).wse_student_id)
