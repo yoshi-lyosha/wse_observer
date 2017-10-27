@@ -6,9 +6,9 @@ import traceback
 from telebot import types
 from datetime import datetime
 
-import wse_observer.model as model
-from wse_observer.wse_observer import WSEObserver, get_logger
-from wse_observer.config import telegram_token, proxies, admin_id
+import model
+from wse_observer import WSEObserver, get_logger
+from config import telegram_token, proxies, admin_id
 
 bot = telebot.TeleBot(telegram_token)
 logger = get_logger('info')
@@ -180,7 +180,7 @@ if __name__ == '__main__':
     from requests.exceptions import ReadTimeout
     from telebot.apihelper import ApiException
 
-    from wse_observer.config import proxies
+    from config import proxies
 
     apihelper.proxy = proxies
 
