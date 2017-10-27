@@ -1,13 +1,14 @@
 import re
 import sys
-import model
 import telebot
 import traceback
 
 from telebot import types
 from datetime import datetime
-from wse_observer import WSEObserver, get_logger
-from config import telegram_token, proxies, admin_id
+
+import wse_observer.model as model
+from wse_observer.wse_observer import WSEObserver, get_logger
+from wse_observer.config import telegram_token, proxies, admin_id
 
 bot = telebot.TeleBot(telegram_token)
 logger = get_logger('info')
@@ -173,7 +174,19 @@ def get_schedule(message):
 
 
 if __name__ == '__main__':
+    import time
+
     from telebot import apihelper
-    from config import proxies
+    from requests.exceptions import ReadTimeout
+    from telebot.apihelper import ApiException
+
+    from wse_observer.config import proxies
+
     apihelper.proxy = proxies
-    bot.polling(none_stop=True)
+
+    while True:
+        try:
+            bot.polling(none_stop=True)
+        except (ReadTimeout, ApiException) as e:
+            logger.warn('There is some exceptions here: {}'.format(e))
+            time.sleep(15)
